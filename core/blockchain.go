@@ -1,5 +1,11 @@
 package core
 
+import (
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+)
+
 type Blockchain struct {
 	store     Storage
 	headers   []*Header
@@ -30,6 +36,14 @@ func (bc *Blockchain) AddBlock(b *Block) error {
 	return bc.addBlockWithoutValidation(b)
 }
 
+func (bc *Blockchain) GetHeader(height uint32) (*Header, error) {
+	if height > bc.Height() {
+		return nil, fmt.Errorf("given height %d is not a valid block number aka height", height)
+	}
+
+	return bc.headers[int(height)], nil
+}
+
 func (bc *Blockchain) HasBlock(height uint32) bool {
 	return height <= bc.Height()
 }
@@ -41,6 +55,10 @@ func (bc *Blockchain) Height() uint32 {
 
 // make this function local and not exposed outside
 func (bc *Blockchain) addBlockWithoutValidation(b *Block) error {
+	logrus.WithFields(logrus.Fields{
+		"height": b.Height,
+		"hash":   BlockHasher{}.Hash(b.Header),
+	}).Info("adding new block")
 	bc.headers = append(bc.headers, b.Header)
 
 	return bc.store.Put(b)
