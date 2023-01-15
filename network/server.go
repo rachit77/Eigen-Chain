@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -91,6 +92,15 @@ func (s *Server) ProcessMessage(msg *DecodedMessage) error {
 	return nil
 }
 
+func (s *Server) broadcast(payload []byte) error {
+	for _, tr := range s.Transports {
+		if err := tr.Broadcast(payload); err != nil {
+
+		}
+	}
+	return nil
+}
+
 func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
@@ -115,8 +125,29 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 		"mempool length": s.memPool.Len(),
 	}).Info("adding new tx to the mempool")
 
+	//broadcast transaction to the peers
+	// if err := s.broadcastTx(tx); err != nil {
+	// 	logrus.Error(err)
+	// }
+	go s.broadcastTx(tx)
+
 	return s.memPool.Add(tx)
 
+}
+
+//TODO: if not using return value of this function than log the error in this function instead of returning a value
+func (s *Server) broadcastTx(tx *core.Transaction) error {
+	//encode this transaction
+	buf := &bytes.Buffer{}
+	if err := tx.Encode(core.NewGobTxEncoder(buf)); err != nil {
+		return err
+	}
+
+	//all communication between are of message type
+	msg := NewMessage(MessageTypeTx, buf.Bytes())
+
+	//broadcast the message to peers
+	return s.broadcast(msg.Bytes())
 }
 
 func (s *Server) createNewBlock() error {
