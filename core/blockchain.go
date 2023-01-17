@@ -4,20 +4,23 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sirupsen/logrus"
+	"github.com/go-kit/log"
 )
 
+//each network participant has it's own state
 type Blockchain struct {
+	logger    log.Logger
 	store     Storage
 	lock      sync.RWMutex
 	headers   []*Header
 	validator Validator
 }
 
-func NewBlockchain(genesis *Block) (*Blockchain, error) {
+func NewBlockchain(l log.Logger, genesis *Block) (*Blockchain, error) {
 	bc := &Blockchain{
 		headers: []*Header{},
 		store:   NewMemoryStore(),
+		logger:  l,
 	}
 
 	bc.validator = NewBlockValidator(bc)
@@ -73,10 +76,12 @@ func (bc *Blockchain) addBlockWithoutValidation(b *Block) error {
 	bc.headers = append(bc.headers, b.Header)
 	bc.lock.Unlock()
 
-	logrus.WithFields(logrus.Fields{
-		"height": b.Height,
-		"hash":   BlockHasher{}.Hash(b.Header),
-	}).Info("adding new block")
+	bc.logger.Log(
+		"msg", "new block",
+		"hash", b.Hash(BlockHasher{}),
+		"height", b.Height,
+		"transactions", len(b.Transactions),
+	)
 
 	return bc.store.Put(b)
 }

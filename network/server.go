@@ -2,13 +2,13 @@ package network
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/rachit77/Eigen-Chain/core"
 	"github.com/rachit77/Eigen-Chain/crypto"
+	"github.com/rachit77/Eigen-Chain/types"
 )
 
 var defaultBlockTime = 5 * time.Second
@@ -27,12 +27,13 @@ type ServerOpts struct {
 type Server struct {
 	ServerOpts
 	memPool     *TxPool
+	chain       *core.Blockchain
 	isValidator bool
 	rpcCh       chan RPC
 	quitCh      chan struct{}
 }
 
-func NewServer(opts ServerOpts) *Server {
+func NewServer(opts ServerOpts) (*Server, error) {
 	if opts.BlockTime == time.Duration(0) {
 		opts.BlockTime = defaultBlockTime
 	}
@@ -46,8 +47,14 @@ func NewServer(opts ServerOpts) *Server {
 		opts.Logger = log.With(opts.Logger, "ID", opts.ID)
 	}
 
+	chain, err := core.NewBlockchain(opts.Logger, genesisBlock())
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
 		ServerOpts:  opts,
+		chain:       chain,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil, //potential validator will need a private key
 		rpcCh:       make(chan RPC),
@@ -63,7 +70,7 @@ func NewServer(opts ServerOpts) *Server {
 		go s.validatorLoop()
 	}
 
-	return s
+	return s, nil
 }
 
 func (s *Server) Start() {
@@ -152,6 +159,10 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 }
 
+func (s *Server) broadcastBlock(b *core.Block) error {
+	return nil
+}
+
 //TODO: if not using return value of this function than log the error in this function instead of returning a value
 func (s *Server) broadcastTx(tx *core.Transaction) error {
 	//encode this transaction
@@ -167,11 +178,6 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 	return s.broadcast(msg.Bytes())
 }
 
-func (s *Server) createNewBlock() error {
-	fmt.Println("creating a new block")
-	return nil
-}
-
 func (s *Server) initTransports() {
 	for _, tr := range s.Transports {
 		go func(tr Transport) {
@@ -180,4 +186,42 @@ func (s *Server) initTransports() {
 			}
 		}(tr)
 	}
+}
+
+func (s *Server) createNewBlock() error {
+	currentHeader, err := s.chain.GetHeader(s.chain.Height())
+	if err != nil {
+		return err
+	}
+
+	//TODO: decide parameter and complexity for size of block
+	txx := s.memPool.Transactions()
+	block, err := core.NewBlockFromPrevHeader(currentHeader, txx)
+	if err != nil {
+		return err
+	}
+
+	if err := block.Sign(*s.PrivateKey); err != nil {
+		return err
+	}
+
+	if err := s.chain.AddBlock(block); err != nil {
+		return err
+	}
+
+	s.memPool.Flush()
+
+	return nil
+}
+
+func genesisBlock() *core.Block {
+	header := &core.Header{
+		Version:   1,
+		DataHash:  types.Hash{},
+		Height:    0,
+		Timestamp: uint64(000000),
+	}
+
+	b, _ := core.NewBlock(header, nil)
+	return b
 }
