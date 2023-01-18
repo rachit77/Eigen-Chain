@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -27,6 +28,16 @@ func TestVerifyBlock(t *testing.T) {
 	otherPrivKey := crypto.GenaratePrivateKey()
 	b.Validator = otherPrivKey.PublicKey()
 	assert.NotNil(t, b.Verify())
+}
+
+func TestDecodeEncodeBlock(t *testing.T) {
+	b := randomBlock(t, 1, types.Hash{})
+	buf := &bytes.Buffer{}
+
+	assert.Nil(t, b.Encode(NewGobBlockEncoder(buf)))
+	bDecode := new(Block)
+	assert.Nil(t, bDecode.Decode(NewGobBlockDecoder(buf)))
+	assert.Equal(t, b, bDecode)
 }
 
 //our check will fail if we add transaction in a block after adding the block in the blockchain
